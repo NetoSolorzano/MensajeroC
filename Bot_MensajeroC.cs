@@ -24,7 +24,13 @@ namespace MensajeroC
         public static string cont = ConfigurationManager.AppSettings["pass"].ToString();
         public static string data = ConfigurationManager.AppSettings["data"].ToString();
         public static string ctl = ConfigurationManager.AppSettings["ConnectionLifeTime"].ToString();
-        string lapso = ConfigurationManager.AppSettings["lapsoTseg"].ToString();
+        string lapso = ConfigurationManager.AppSettings["lapsoTseg"].ToString();                                // tiempo en segundos
+        string coror = ConfigurationManager.AppSettings["corrOrige"].ToString();                                // correo enviador
+        string corde = ConfigurationManager.AppSettings["corrDesti"].ToString();                                // correo destino
+        string asuco = ConfigurationManager.AppSettings["asuntoCor"].ToString();                                // asunto del correo
+        string smtpn = ConfigurationManager.AppSettings["nomSerCor"].ToString();                                // servidor smpt
+        string nupto = ConfigurationManager.AppSettings["numPtoSer"].ToString();                                // puerto smpt
+        string pasco = ConfigurationManager.AppSettings["passCorre"].ToString();                                // clave del correo enviador
         string DB_CONN_STR = "server=" + serv + ";uid=" + usua + ";pwd=" + cont + ";database=" + data + ";";
 
         public Bot_MensajeroC()
@@ -109,16 +115,23 @@ namespace MensajeroC
         private bool mensajero(DataTable dt)
         {
             bool retorna = false;
-
+            foreach (DataRow row in dt.Rows)
+            {
+                string cuerpo = getHtml(row.ItemArray[0].ToString(),    // nombre del fulano
+                    row.ItemArray[1].ToString(),        // fecha/hora
+                    row.ItemArray[2].ToString(),        // correo destino
+                    row.ItemArray[3].ToString());       // otro dato
+                Email(cuerpo);
+            }
             return retorna;
         }
         // esquema del coreo electrónico - cuerpo del mensaje en HTML
-        public static string getHtml(DataTable grid, int numreg)
+        public static string getHtml(string nomb, string feho, string corr, string otro)
         {
             try
             {
                 string messageBody = "<font>Horario de marcación entrada/salida: </font><br><br>";
-                if (grid.Rows.Count == 0) return messageBody;
+                if (nomb.Length < 1) return messageBody;
                 string htmlTableStart = "<table style=\"border-collapse:collapse; text-align:center;\" >";
                 string htmlTableEnd = "</table>";
                 string htmlHeaderRowStart = "<tr style=\"background-color:#6FA1D2; color:#ffffff;\">";
@@ -137,10 +150,10 @@ namespace MensajeroC
                 //Loop all the rows from grid vew and added to html td  
                 {
                     messageBody = messageBody + htmlTrStart;
-                    messageBody = messageBody + htmlTdStart + grid.Rows[numreg].ItemArray[0].ToString() + htmlTdEnd; //adding nombre
-                    messageBody = messageBody + htmlTdStart + grid.Rows[numreg].ItemArray[1].ToString() + htmlTdEnd; //adding fecha hora
-                    messageBody = messageBody + htmlTdStart + grid.Rows[numreg].ItemArray[2].ToString() + htmlTdEnd; //adding correo
-                    messageBody = messageBody + htmlTdStart + grid.Rows[numreg].ItemArray[3].ToString() + htmlTdEnd; //adding celular  
+                    messageBody = messageBody + htmlTdStart + nomb + htmlTdEnd; //adding nombre
+                    messageBody = messageBody + htmlTdStart + feho + htmlTdEnd; //adding fecha hora
+                    messageBody = messageBody + htmlTdStart + corr + htmlTdEnd; //adding correo
+                    messageBody = messageBody + htmlTdStart + otro + htmlTdEnd; //adding celular  
                     messageBody = messageBody + htmlTrEnd;
                 }
                 messageBody = messageBody + htmlTableEnd;
@@ -151,7 +164,28 @@ namespace MensajeroC
                 return null;
             }
         }
-
+        // envío del mensaje
+        private void Email(string htmlString)
+        {
+            try
+            {
+                MailMessage message = new MailMessage();
+                SmtpClient smtp = new SmtpClient();
+                message.From = new MailAddress(coror);
+                message.To.Add(new MailAddress(corde));
+                message.Subject = asuco;
+                message.IsBodyHtml = true;
+                message.Body = htmlString;
+                smtp.Port = int.Parse(nupto);    // 587;
+                smtp.Host = smtpn;               // "smtp.gmail.com";
+                smtp.EnableSsl = true;
+                smtp.UseDefaultCredentials = false;
+                smtp.Credentials = new NetworkCredential(coror, pasco);
+                smtp.DeliveryMethod = SmtpDeliveryMethod.Network;
+                smtp.Send(message);
+            }
+            catch (Exception) { }
+        }
         //Escribe el mensaje de la propiedad mensajeLog en un fichero en la carpeta del ejecutable
         public void escribirLineaFichero()
         {
