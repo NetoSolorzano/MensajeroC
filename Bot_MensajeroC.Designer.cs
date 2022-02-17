@@ -28,12 +28,18 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
             this.eventos_MensajeroC = new System.Diagnostics.EventLog();
+            this.timer1 = new System.Windows.Forms.Timer(this.components);
             ((System.ComponentModel.ISupportInitialize)(this.eventos_MensajeroC)).BeginInit();
             // 
             // eventos_MensajeroC
             // 
             this.eventos_MensajeroC.Log = "Application";
+            // 
+            // timer1
+            // 
+            this.timer1.Tick += new System.EventHandler(this.timer1_Tick);
             // 
             // Bot_MensajeroC
             // 
@@ -45,5 +51,6 @@
         #endregion
 
         private System.Diagnostics.EventLog eventos_MensajeroC;
+        private System.Windows.Forms.Timer timer1;
     }
 }
