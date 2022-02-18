@@ -6,7 +6,7 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
+using System.Timers;
 using System.ServiceProcess;
 using System.Net;
 using System.Net.Mail;
@@ -36,7 +36,6 @@ namespace MensajeroC
         public Bot_MensajeroC()
         {
             InitializeComponent();
-            init();
             eventos_MensajeroC = new EventLog();
             if (!EventLog.SourceExists("Bot_MensajeroC"))
             {
@@ -49,16 +48,20 @@ namespace MensajeroC
         {
             // escribe en el log de eventos del sistema - inicio del mensajero
             eventos_MensajeroC.WriteEntry("Inicio del Bot_MensajeroC");
-            timer1_Tick(null, null);
+
+            Timer timer1 = new Timer();
+            timer1.Interval = int.Parse(lapso) * 1000;          // en xml es segundos, en c# es milisegundos, por eso multiplicamos por 1000
+            timer1.Enabled = true;
+            timer1.Elapsed += timer1_Tick;
+            timer1.Start();
+
         }
         protected override void OnStop()
         {
             // escribe en el log de eventos del sistema - detención del mensajero
             eventos_MensajeroC.WriteEntry("Detención del Bot_MensajeroC");
-        }
-        private void init()
-        {
-            timer1.Interval = int.Parse(lapso) * 1000;          // en xml es segundos, en c# es milisegundos, por eso multiplicamos por 1000
+            //timer1.Enabled = false;
+            //timer1.Stop();
         }
         private void timer1_Tick(object sender, EventArgs e)
         {
@@ -72,12 +75,7 @@ namespace MensajeroC
                     if (plan_lector(conn, dt) == true)
                     {
                         // envía correos
-                        if (mensajero(dt) == true)
-                        {
-                            // marca registros procesados
-
-                        }
-                        else
+                        if (mensajero(conn, dt) == false)
                         {
                             mensajeLog = "No se puede enviar los correos, error en la lectura de datos o en el envío";
                             escribirLineaFichero();
@@ -112,16 +110,29 @@ namespace MensajeroC
             }
             return retorna;
         }
-        private bool mensajero(DataTable dt)
+        private bool mensajero(SqlConnection conn, DataTable dt)
         {
             bool retorna = false;
             foreach (DataRow row in dt.Rows)
             {
                 string cuerpo = getHtml(row.ItemArray[0].ToString(),    // nombre del fulano
                     row.ItemArray[1].ToString(),        // fecha/hora
-                    row.ItemArray[2].ToString(),        // correo destino
-                    row.ItemArray[3].ToString());       // otro dato
-                Email(cuerpo);
+                    row.ItemArray[7].ToString(),        // correo destino
+                    row.ItemArray[8].ToString());       // otro dato
+
+                if (Email(cuerpo) == true)
+                {
+                    // marca registro como "correo enviado"
+                    if (envia_correo(conn, int.Parse(row.ItemArray[10].ToString())) == true)    // campo id del registro
+                    {
+                        retorna = true;
+                    }
+                    else
+                    {
+                        mensajeLog = "No se puede actualizar el campo de marca de envío";
+                        escribirLineaFichero();
+                    }
+                }
             }
             return retorna;
         }
@@ -165,26 +176,49 @@ namespace MensajeroC
             }
         }
         // envío del mensaje
-        private void Email(string htmlString)
+        private bool Email(string htmlString)
         {
+            bool retorna = false;
             try
             {
                 MailMessage message = new MailMessage();
                 SmtpClient smtp = new SmtpClient();
-                message.From = new MailAddress(coror);
-                message.To.Add(new MailAddress(corde));
-                message.Subject = asuco;
-                message.IsBodyHtml = true;
-                message.Body = htmlString;
-                smtp.Port = int.Parse(nupto);    // 587;
-                smtp.Host = smtpn;               // "smtp.gmail.com";
-                smtp.EnableSsl = true;
+                message.From = new MailAddress(coror);      //  "neto.solorzano@solorsoft.com"
+                message.To.Add(new MailAddress(corde));     //  "lucio.solorzano@gmail.com"
+                message.Subject = asuco;        // "Prueba del boot mensajero";
+                message.IsBodyHtml = true;      //  false;
+                message.Body = htmlString;      // "Probando - este es el cuerpo del mensaje";
+                smtp.Port = int.Parse(nupto);   // 26;  // 465;    // 587;
+                smtp.Host = smtpn;              // "mail.solorsoft.com";               // "smtp.gmail.com";
+                smtp.EnableSsl = false;     // true;
                 smtp.UseDefaultCredentials = false;
-                smtp.Credentials = new NetworkCredential(coror, pasco);
+                smtp.Credentials = new NetworkCredential(coror, pasco);     // "neto.solorzano@solorsoft.com", "190969Sorol"
                 smtp.DeliveryMethod = SmtpDeliveryMethod.Network;
+
                 smtp.Send(message);
+                retorna = true;
             }
             catch (Exception) { }
+            return retorna;
+        }
+        // marca el registro indicado como correo enviado
+        private bool envia_correo(SqlConnection conn, int nreg)
+        {
+            bool retorna = false;
+            string actua = "update xxx set campo='enviado' where id=@nreg";
+            using (SqlCommand micon = new SqlCommand(actua, conn))
+            {
+                try
+                {
+                    micon.Parameters.AddWithValue("@nreg", nreg);
+                    micon.ExecuteNonQuery();
+                    retorna = true;
+                }
+                catch { 
+                
+                }
+            }
+            return retorna;
         }
         //Escribe el mensaje de la propiedad mensajeLog en un fichero en la carpeta del ejecutable
         public void escribirLineaFichero()
