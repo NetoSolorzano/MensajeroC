@@ -25,12 +25,14 @@ namespace MensajeroC
         public static string data = ConfigurationManager.AppSettings["data"].ToString();
         public static string ctl = ConfigurationManager.AppSettings["ConnectionLifeTime"].ToString();
         string lapso = ConfigurationManager.AppSettings["lapsoTseg"].ToString();                                // tiempo en segundos
+        string feini = ConfigurationManager.AppSettings["fechainil"].ToString();                                // fecha de inicio de lecturas
         string coror = ConfigurationManager.AppSettings["corrOrige"].ToString();                                // correo enviador
         string corde = ConfigurationManager.AppSettings["corrDesti"].ToString();                                // correo destino
         string asuco = ConfigurationManager.AppSettings["asuntoCor"].ToString();                                // asunto del correo
         string smtpn = ConfigurationManager.AppSettings["nomSerCor"].ToString();                                // servidor smpt
         string nupto = ConfigurationManager.AppSettings["numPtoSer"].ToString();                                // puerto smpt
         string pasco = ConfigurationManager.AppSettings["passCorre"].ToString();                                // clave del correo enviador
+        string asunto = "";     // asunto con nombre y hora
         string DB_CONN_STR = "server=" + serv + ";uid=" + usua + ";pwd=" + cont + ";database=" + data + ";";
 
         public Bot_MensajeroC()
@@ -48,13 +50,12 @@ namespace MensajeroC
         {
             // escribe en el log de eventos del sistema - inicio del mensajero
             eventos_MensajeroC.WriteEntry("Inicio del Bot_MensajeroC");
-
+            
             Timer timer1 = new Timer();
             timer1.Interval = int.Parse(lapso) * 1000;          // en xml es segundos, en c# es milisegundos, por eso multiplicamos por 1000
             timer1.Enabled = true;
             timer1.Elapsed += timer1_Tick;
             timer1.Start();
-
         }
         protected override void OnStop()
         {
@@ -68,12 +69,20 @@ namespace MensajeroC
             using (SqlConnection conn = new SqlConnection(DB_CONN_STR))
             {
                 conn.Open();
+                mensajeLog = "Estoy antes de abrir la conexion";
+                escribirLineaFichero();
                 if (conn.State == System.Data.ConnectionState.Open)
                 {
+                    mensajeLog = "Estoy dentro de la conexion ABIERTA";
+                    escribirLineaFichero();
+
                     DataTable dt = new DataTable();
                     // lee registros nuevos
                     if (plan_lector(conn, dt) == true)
                     {
+                        mensajeLog = "Plan lector si obtuvo datos";
+                        escribirLineaFichero();
+
                         // envía correos
                         if (mensajero(conn, dt) == false)
                         {
@@ -99,9 +108,12 @@ namespace MensajeroC
         private bool plan_lector(SqlConnection conn, DataTable dt)
         {
             bool retorna = false;
-            string jala = "select * from dbo.TM_TABLA_MULTIPLE where co_item_tabla='0'";    // esto se tiene que cambiar al verdadero
+            string jala = "SELECT a.emp_code,a.punch_time,a.area_alias,b.first_name,ifnull(b.last_name,'') AS last_name,a.id " +
+                "FROM iclock_transaction a LEFT JOIN personnel_employee b ON a.emp_code = b.emp_code " +
+                "WHERE date(a.punch_time)>@feini AND a.marca = 0";
             using (SqlCommand micon = new SqlCommand(jala, conn))
             {
+                micon.Parameters.AddWithValue("@feini", feini);
                 using (SqlDataAdapter da = new SqlDataAdapter(micon))
                 {
                     da.Fill(dt);
@@ -115,15 +127,21 @@ namespace MensajeroC
             bool retorna = false;
             foreach (DataRow row in dt.Rows)
             {
-                string cuerpo = getHtml(row.ItemArray[0].ToString(),    // nombre del fulano
+                asunto = "";
+                string cuerpo = getHtml(row.ItemArray[3].ToString() + " " + 
+                    row.ItemArray[4].ToString(),        // nombre del fulano
                     row.ItemArray[1].ToString(),        // fecha/hora
-                    row.ItemArray[7].ToString(),        // correo destino
-                    row.ItemArray[8].ToString());       // otro dato
-
+                    row.ItemArray[0].ToString(),        // codigo empleado
+                    row.ItemArray[2].ToString());       // area o tienda
+                asunto = asuco + row.ItemArray[3].ToString() + " " + row.ItemArray[4].ToString() + " - " + row.ItemArray[1].ToString();
                 if (Email(cuerpo) == true)
                 {
                     // marca registro como "correo enviado"
-                    if (envia_correo(conn, int.Parse(row.ItemArray[10].ToString())) == true)    // campo id del registro
+
+                    mensajeLog = "Estamos a punto de enviar el correo";
+                    escribirLineaFichero();
+
+                    if (envia_correo(conn, int.Parse(row.ItemArray[5].ToString())) == true)    // campo id del registro
                     {
                         retorna = true;
                     }
@@ -155,8 +173,8 @@ namespace MensajeroC
                 messageBody += htmlHeaderRowStart;
                 messageBody += htmlTdStart + "Nombre trabajador" + htmlTdEnd;
                 messageBody += htmlTdStart + "Fecha/Hora" + htmlTdEnd;
-                messageBody += htmlTdStart + "Email" + htmlTdEnd;
-                messageBody += htmlTdStart + "Teléfono" + htmlTdEnd;
+                messageBody += htmlTdStart + "Código" + htmlTdEnd;
+                messageBody += htmlTdStart + "Area/Tda" + htmlTdEnd;
                 messageBody += htmlHeaderRowEnd;
                 //Loop all the rows from grid vew and added to html td  
                 {
@@ -183,16 +201,16 @@ namespace MensajeroC
             {
                 MailMessage message = new MailMessage();
                 SmtpClient smtp = new SmtpClient();
-                message.From = new MailAddress(coror);      //  "neto.solorzano@solorsoft.com"
-                message.To.Add(new MailAddress(corde));     //  "lucio.solorzano@gmail.com"
-                message.Subject = asuco;        // "Prueba del boot mensajero";
-                message.IsBodyHtml = true;      //  false;
-                message.Body = htmlString;      // "Probando - este es el cuerpo del mensaje";
-                smtp.Port = int.Parse(nupto);   // 26;  // 465;    // 587;
-                smtp.Host = smtpn;              // "mail.solorsoft.com";               // "smtp.gmail.com";
-                smtp.EnableSsl = false;     // true;
+                message.From = new MailAddress(coror);      // correo quien envía
+                message.To.Add(new MailAddress(corde));     // correo destinatario
+                message.Subject = asunto;                   // texto general + nombre y fecha/hora
+                message.IsBodyHtml = true;                  // correo en html?
+                message.Body = htmlString;                  // cuerpo del correo
+                smtp.Port = int.Parse(nupto);               // 26;  // 465;    // 587;
+                smtp.Host = smtpn;                          // "smtp.gmail.com";
+                smtp.EnableSsl = false;                     // correo con certificado de seguridad?
                 smtp.UseDefaultCredentials = false;
-                smtp.Credentials = new NetworkCredential(coror, pasco);     // "neto.solorzano@solorsoft.com", "190969Sorol"
+                smtp.Credentials = new NetworkCredential(coror, pasco);     // correoElectronico, contraseña
                 smtp.DeliveryMethod = SmtpDeliveryMethod.Network;
 
                 smtp.Send(message);
@@ -205,7 +223,7 @@ namespace MensajeroC
         private bool envia_correo(SqlConnection conn, int nreg)
         {
             bool retorna = false;
-            string actua = "update xxx set campo='enviado' where id=@nreg";
+            string actua = "UPDATE iclock_transaction SET marca=1 WHERE id=@nreg";
             using (SqlCommand micon = new SqlCommand(actua, conn))
             {
                 try
